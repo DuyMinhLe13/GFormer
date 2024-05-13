@@ -172,12 +172,16 @@ class Coach:
     def saveHistory(self):
         if args.epoch == 0:
             return
+        if not os.path.exists('History'):
+            os.mkdir('History')
         with open('./History/' + args.save_path + '.his', 'wb') as fs:
             pickle.dump(self.metrics, fs)
 
         content = {
             'model': self.model,
         }
+        if not os.path.exists('Models'):
+            os.mkdir('Models')
         t.save(content, './Models/' + args.save_path + '.mod')
         log('Model Saved: %s' % args.save_path)
 
