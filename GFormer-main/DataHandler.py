@@ -9,6 +9,7 @@ import torch as t
 import torch.utils.data as data
 import torch.utils.data as dataloader
 import networkx as nx
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class DataHandler:
@@ -87,13 +88,13 @@ class DataHandler:
         idxs = t.from_numpy(np.vstack([mat.row, mat.col]).astype(np.int64))
         vals = t.from_numpy(mat.data.astype(np.float32))
         shape = t.Size(mat.shape)
-        return t.sparse.FloatTensor(idxs, vals, shape).cuda()
+        return t.sparse.FloatTensor(idxs, vals, shape).to(device)
 
     def makeAllOne(self, torchAdj):
         idxs = torchAdj._indices()
         vals = t.ones_like(torchAdj._values())
         shape = torchAdj.shape
-        return t.sparse.FloatTensor(idxs, vals, shape).cuda()
+        return t.sparse.FloatTensor(idxs, vals, shape).to(device)
 
     def LoadData(self):
         trnMat = self.loadOneFile(self.trnfile)
