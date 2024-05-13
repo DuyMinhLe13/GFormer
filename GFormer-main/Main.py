@@ -9,6 +9,7 @@ from Utils.Utils import *
 from Utils.Utils import contrast
 import os
 import torch.nn as nn
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
@@ -66,8 +67,8 @@ class Coach:
         self.saveHistory()
 
     def prepareModel(self):
-        self.gtLayer = GTLayer().cuda()
-        self.model = Model(self.gtLayer).cuda()
+        self.gtLayer = GTLayer().to(device)
+        self.model = Model(self.gtLayer).to(device)
         self.opt = t.optim.Adam(self.model.parameters(), lr=args.lr, weight_decay=0)
         self.masker = RandomMaskSubgraphs(args.user, args.item)
         self.sampler = LocalGraph(self.gtLayer)
@@ -84,9 +85,9 @@ class Coach:
                                                  self.handler)
                 encoderAdj, decoderAdj, sub, cmp = self.masker(add_adj, att_edge)
             ancs, poss, negs = tem
-            ancs = ancs.long().cuda()
-            poss = poss.long().cuda()
-            negs = negs.long().cuda()
+            ancs = ancs.long().to(device)
+            poss = poss.long().to(device)
+            negs = negs.long().to(device)
 
             usrEmbeds, itmEmbeds, cList, subLst = self.model(self.handler, False, sub, cmp,  encoderAdj,
                                                                            decoderAdj)
@@ -133,8 +134,8 @@ class Coach:
         steps = num // args.tstBat
         for usr, trnMask in tstLoader:
             i += 1
-            usr = usr.long().cuda()
-            trnMask = trnMask.cuda()
+            usr = usr.long().to(device)
+            trnMask = trnMask.to(device)
             usrEmbeds, itmEmbeds, _, _ = self.model(self.handler, True, self.handler.torchBiAdj, self.handler.torchBiAdj,
                                                           self.handler.torchBiAdj)
 
