@@ -7,6 +7,7 @@ import numpy as np
 import networkx as nx
 import multiprocessing as mp
 import random
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 init = nn.init.xavier_uniform_
 uniformInit = nn.init.uniform
@@ -73,7 +74,7 @@ class PNNLayer(nn.Module):
     def forward(self, handler, embeds):
         t.cuda.empty_cache()
         anchor_set_id = handler.anchorset_id
-        dists_array = t.tensor(handler.dists_array, dtype=t.float32).to("cuda:0")
+        dists_array = t.tensor(handler.dists_array, dtype=t.float32).to(device)
         set_ids_emb = embeds[anchor_set_id]
         set_ids_reshape = set_ids_emb.repeat(dists_array.shape[1], 1).reshape(-1, len(set_ids_emb),
                                                                               args.latdim)  # 69534.256.32
@@ -97,7 +98,7 @@ class GTLayer(nn.Module):
         self.vTrans = nn.Parameter(init(t.empty(args.latdim, args.latdim)))
 
     def makeNoise(self, scores):
-        noise = t.rand(scores.shape).cuda()
+        noise = t.rand(scores.shape).to(device)
         noise = -t.log(-t.log(noise))
         return scores + 0.01*noise
 
@@ -114,12 +115,12 @@ class GTLayer(nn.Module):
         att = t.einsum('ehd, ehd -> eh', qEmbeds, kEmbeds)
         att = t.clamp(att, -10.0, 10.0)
         expAtt = t.exp(att)
-        tem = t.zeros([adj.shape[0], args.head]).cuda()
+        tem = t.zeros([adj.shape[0], args.head]).to(device)
         attNorm = (tem.index_add_(0, rows, expAtt))[rows]
         att = expAtt / (attNorm + 1e-8)
 
         resEmbeds = t.einsum('eh, ehd -> ehd', att, vEmbeds).view([-1, args.latdim])
-        tem = t.zeros([adj.shape[0], args.latdim]).cuda()
+        tem = t.zeros([adj.shape[0], args.latdim]).to(device)
         resEmbeds = tem.index_add_(0, rows, resEmbeds)  # nd
         return resEmbeds, att
 
@@ -133,10 +134,10 @@ class LocalGraph(nn.Module):
         self.device = "cuda:0"
         self.num_users = args.user
         self.num_items = args.item
-        self.pnn = PNNLayer().cuda()
+        self.pnn = PNNLayer().to(device)
 
     def makeNoise(self, scores):
-        noise = t.rand(scores.shape).cuda()
+        noise = t.rand(scores.shape).to(device)
         noise = -t.log(-t.log(noise))
         return scores + noise
 
@@ -204,17 +205,17 @@ class LocalGraph(nn.Module):
         tmp_rows = np.random.choice(rows.cpu(), size=[int(len(rows) * args.addRate)])
         tmp_cols = np.random.choice(cols.cpu(), size=[int(len(cols) * args.addRate)])
 
-        add_cols = t.tensor(tmp_cols).to(self.device)
-        add_rows = t.tensor(tmp_rows).to(self.device)
+        add_cols = t.tensor(tmp_cols).to(device)
+        add_rows = t.tensor(tmp_rows).to(device)
 
-        newRows = t.cat([add_rows, add_cols, t.arange(args.user + args.item).cuda(), rows])
-        newCols = t.cat([add_cols, add_rows, t.arange(args.user + args.item).cuda(), cols])
+        newRows = t.cat([add_rows, add_cols, t.arange(args.user + args.item).to(device), rows])
+        newCols = t.cat([add_cols, add_rows, t.arange(args.user + args.item).to(device), cols])
 
         ratings_keep = np.array(t.ones_like(t.tensor(newRows.cpu())))
         adj_mat = sp.csr_matrix((ratings_keep, (newRows.cpu(), newCols.cpu())),
                                 shape=(self.num_users + self.num_items, self.num_users + self.num_items))
 
-        add_adj = self.sp_mat_to_sp_tensor(adj_mat).to(self.device)
+        add_adj = self.sp_mat_to_sp_tensor(adj_mat).to(device)
 
         embeds_l2, atten = self.gt_layer(add_adj, embeds)
         att_edge = t.sum(atten, dim=-1)
@@ -275,8 +276,8 @@ class RandomMaskSubgraphs(nn.Module):
 
         rows = users_up[keep_index]
         cols = items_up[keep_index]
-        rows = t.cat([t.arange(args.user + args.item).cuda(), rows])
-        cols = t.cat([t.arange(args.user + args.item).cuda(), cols])
+        rows = t.cat([t.arange(args.user + args.item).to(device), rows])
+        cols = t.cat([t.arange(args.user + args.item).to(device), cols])
 
         ratings_keep = np.array(t.ones_like(t.tensor(rows.cpu())))
         adj_mat = sp.csr_matrix((ratings_keep, (rows.cpu(), cols.cpu())),
@@ -288,7 +289,7 @@ class RandomMaskSubgraphs(nn.Module):
         d_mat_inv = sp.diags(d_inv)
         norm_adj_tmp = d_mat_inv.dot(adj_mat)
         adj_matrix = norm_adj_tmp.dot(d_mat_inv)
-        encoderAdj = self.sp_mat_to_sp_tensor(adj_matrix).to(self.device)
+        encoderAdj = self.sp_mat_to_sp_tensor(adj_matrix).to(device)
         return encoderAdj
 
     def forward(self, adj, att_edge):
@@ -305,8 +306,8 @@ class RandomMaskSubgraphs(nn.Module):
         keep_index.sort()
         rows = users_up[keep_index]
         cols = items_up[keep_index]
-        rows = t.cat([t.arange(args.user + args.item).cuda(), rows])
-        cols = t.cat([t.arange(args.user + args.item).cuda(), cols])
+        rows = t.cat([t.arange(args.user + args.item).to(device), rows])
+        cols = t.cat([t.arange(args.user + args.item).to(device), cols])
         drop_edges = []
         i, j = 0, 0
 
@@ -332,7 +333,7 @@ class RandomMaskSubgraphs(nn.Module):
         d_mat_inv = sp.diags(d_inv)
         norm_adj_tmp = d_mat_inv.dot(adj_mat)
         adj_matrix = norm_adj_tmp.dot(d_mat_inv)
-        encoderAdj = self.sp_mat_to_sp_tensor(adj_matrix).to(self.device)
+        encoderAdj = self.sp_mat_to_sp_tensor(adj_matrix).to(device)
 
 
         drop_row_ids = users_up[drop_edges]
@@ -341,8 +342,8 @@ class RandomMaskSubgraphs(nn.Module):
         ext_rows = np.random.choice(rows.cpu(), size=[int(len(drop_row_ids) * args.ext)])
         ext_cols = np.random.choice(cols.cpu(), size=[int(len(drop_col_ids) * args.ext)])
 
-        ext_cols = t.tensor(ext_cols).to(self.device)
-        ext_rows = t.tensor(ext_rows).to(self.device)
+        ext_cols = t.tensor(ext_cols).to(device)
+        ext_rows = t.tensor(ext_rows).to(device)
         #
         tmp_rows = t.cat([ext_rows, drop_row_ids])
         tmp_cols = t.cat([ext_cols, drop_col_ids])
@@ -350,18 +351,18 @@ class RandomMaskSubgraphs(nn.Module):
         new_rows = np.random.choice(tmp_rows.cpu(), size=[int(adj._values().shape[0] * args.reRate)])
         new_cols = np.random.choice(tmp_cols.cpu(), size=[int(adj._values().shape[0] * args.reRate)])
 
-        new_rows = t.tensor(new_rows).to(self.device)
-        new_cols = t.tensor(new_cols).to(self.device)
+        new_rows = t.tensor(new_rows).to(device)
+        new_cols = t.tensor(new_cols).to(device)
 
-        newRows = t.cat([new_rows, new_cols, t.arange(args.user + args.item).cuda(), rows])
-        newCols = t.cat([new_cols, new_rows, t.arange(args.user + args.item).cuda(), cols])
+        newRows = t.cat([new_rows, new_cols, t.arange(args.user + args.item).to(device), rows])
+        newCols = t.cat([new_cols, new_rows, t.arange(args.user + args.item).to(device), cols])
 
         hashVal = newRows * (args.user + args.item) + newCols
         hashVal = t.unique(hashVal)
         newCols = hashVal % (args.user + args.item)
         newRows = ((hashVal - newCols) / (args.user + args.item)).long()
 
-        decoderAdj = t.sparse.FloatTensor(t.stack([newRows, newCols], dim=0), t.ones_like(newRows).cuda().float(),
+        decoderAdj = t.sparse.FloatTensor(t.stack([newRows, newCols], dim=0), t.ones_like(newRows).to(device).float(),
                                           adj.shape)
 
         sub = self.create_sub_adj(adj, att_edge, True)
