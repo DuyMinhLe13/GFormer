@@ -9,6 +9,7 @@ from Utils.Utils import *
 from Utils.Utils import contrast
 import os
 import torch.nn as nn
+from tqdm import tqdm
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
@@ -79,7 +80,7 @@ class Coach:
         epLoss, epPreLoss = 0, 0
         steps = trnLoader.dataset.__len__() // args.batch
         self.handler.preSelect_anchor_set()
-        for i, tem in enumerate(trnLoader):
+        for i, tem in enumerate(tqdm(trnLoader)):
             if i % args.fixSteps == 0:
                 att_edge, add_adj = self.sampler(self.handler.torchBiAdj, self.model.getEgoEmbeds(),
                                                  self.handler)
@@ -132,7 +133,7 @@ class Coach:
         i = 0
         num = tstLoader.dataset.__len__()
         steps = num // args.tstBat
-        for usr, trnMask in tstLoader:
+        for usr, trnMask in tqdm(tstLoader):
             i += 1
             usr = usr.long().to(device)
             trnMask = trnMask.to(device)
